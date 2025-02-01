@@ -1,4 +1,4 @@
-module github.com/yourusername/yt2mp3
+module github.com/taross-f/yt2mp3
 
 go 1.23
 
