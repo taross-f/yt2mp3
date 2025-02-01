@@ -1,101 +1,80 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/kkdai/youtube/v2"
 	"github.com/spf13/cobra"
+	"github.com/wader/goutubedl"
 )
 
-func main() {
-	var rootCmd = &cobra.Command{
-		Use:   "yt2mp3 [YouTube URL]",
-		Short: "Convert YouTube videos to MP3 format",
-		Args:  cobra.ExactArgs(1),
-		RunE:  run,
-	}
+var rootCmd = &cobra.Command{
+	Use:   "yt2mp3 [URL]",
+	Short: "Download YouTube video and convert to MP3",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		url := args[0]
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func run(cmd *cobra.Command, args []string) error {
-	videoURL := args[0]
-
-	// Initialize YouTube client
-	client := youtube.Client{}
-
-	// Get video info
-	video, err := client.GetVideo(videoURL)
-	if err != nil {
-		return fmt.Errorf("failed to get video info: %v", err)
-	}
-
-	// Select best audio format
-	formats := video.Formats.WithAudioChannels()
-	if len(formats) == 0 {
-		return fmt.Errorf("no suitable audio format found")
-	}
-
-	// Sort formats by audio quality
-	var bestFormat *youtube.Format
-	bestBitrate := 0
-	for i, format := range formats {
-		if format.AudioQuality == "AUDIO_QUALITY_MEDIUM" || format.AudioQuality == "AUDIO_QUALITY_HIGH" {
-			if format.Bitrate > bestBitrate {
-				bestBitrate = format.Bitrate
-				bestFormat = &formats[i]
-			}
+		ctx := context.Background()
+		result, err := goutubedl.New(ctx, url, goutubedl.Options{})
+		if err != nil {
+			return fmt.Errorf("failed to get video info: %v", err)
 		}
-	}
 
-	if bestFormat == nil {
-		bestFormat = &formats[0]
-	}
+		filename := sanitizeFilename(result.Info.Title) + ".mp3"
+		fmt.Printf("Downloading: %s\n", result.Info.Title)
 
-	// Download stream
-	stream, _, err := client.GetStream(video, bestFormat)
-	if err != nil {
-		return fmt.Errorf("failed to get stream: %v", err)
-	}
-	defer stream.Close()
+		// Download the best audio format
+		downloadResult, err := result.Download(ctx, "bestaudio")
+		if err != nil {
+			return fmt.Errorf("failed to download: %v", err)
+		}
+		defer downloadResult.Close()
 
-	// Prepare output filename
-	outputFile := sanitizeFilename(video.Title) + ".mp3"
+		outFile, err := os.Create(filename)
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %v", err)
+		}
+		defer outFile.Close()
 
-	// Create output file
-	out, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %v", err)
-	}
-	defer out.Close()
+		_, err = io.Copy(outFile, downloadResult)
+		if err != nil {
+			return fmt.Errorf("failed to save file: %v", err)
+		}
 
-	// Copy audio data directly (since we're getting MP3 format directly)
-	_, err = io.Copy(out, stream)
-	if err != nil {
-		return fmt.Errorf("failed to save audio: %v", err)
-	}
-
-	fmt.Printf("Successfully downloaded: %s\n", outputFile)
-	return nil
+		fmt.Printf("Successfully downloaded and converted to: %s\n", filename)
+		return nil
+	},
 }
 
 func sanitizeFilename(filename string) string {
 	// Remove invalid characters
-	invalid := []string{"<", ">", ":", "\"", "/", "\\", "|", "?", "*"}
-	result := filename
-
-	for _, char := range invalid {
-		result = strings.ReplaceAll(result, char, "_")
-	}
+	filename = strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+		return r
+	}, filename)
 
 	// Trim spaces
-	result = strings.TrimSpace(result)
+	filename = strings.TrimSpace(filename)
 
-	return result
+	// Ensure filename is not too long
+	if len(filename) > 200 {
+		ext := filepath.Ext(filename)
+		filename = filename[:200-len(ext)] + ext
+	}
+
+	return filename
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
