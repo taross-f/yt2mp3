@@ -19,6 +19,11 @@ jobs:
           go-version: "1.23"
           check-latest: true
 
+      - name: Install youtube-dl
+        run: |
+          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/youtube-dl
+          sudo chmod a+rx /usr/local/bin/youtube-dl
+
       - name: Install dependencies
         run: go mod download
 
