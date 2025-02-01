@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+yt2mp3
 
 # Test binary, built with `go test -c`
 *.test
