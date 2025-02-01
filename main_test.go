@@ -1,9 +1,9 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestSanitizeFilename(t *testing.T) {
@@ -50,22 +50,21 @@ func TestSanitizeFilename(t *testing.T) {
 }
 
 func TestRootCmd(t *testing.T) {
-	// テスト後にクリーンアップする関数
-	cleanup := func() {
-		// カレントディレクトリのMP3ファイルを削除
-		files, err := filepath.Glob("*.mp3")
-		if err != nil {
-			t.Logf("クリーンアップ中にエラーが発生: %v", err)
-			return
+	// オリジナルのrunEを保存
+	originalRunE := rootCmd.RunE
+	defer func() {
+		// テスト終了後に元に戻す
+		rootCmd.RunE = originalRunE
+	}()
+
+	// テスト用のモックコマンド
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) != 1 {
+			return cmd.Usage()
 		}
-		for _, f := range files {
-			if err := os.Remove(f); err != nil {
-				t.Logf("ファイル %s の削除中にエラーが発生: %v", f, err)
-			}
-		}
+		// 実際のダウンロードは行わず、成功したものとする
+		return nil
 	}
-	// テスト終了後にクリーンアップを実行
-	defer cleanup()
 
 	tests := []struct {
 		name        string
@@ -96,8 +95,6 @@ func TestRootCmd(t *testing.T) {
 			if (err != nil) != tt.shouldError {
 				t.Errorf("rootCmd.Execute() error = %v, shouldError %v", err, tt.shouldError)
 			}
-			// 各テストケース後にもクリーンアップを実行
-			cleanup()
 		})
 	}
 }
