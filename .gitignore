@@ -1,14 +1,23 @@
-# バイナリファイル
-yt2mp3
+# Binaries for programs and plugins
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
 
-# 依存関係
-vendor/
+# Test binary, built with `go test -c`
+*.test
 
-# MP3ファイル
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# Downloaded MP3 files
 *.mp3
 
 # macOS固有のファイル
