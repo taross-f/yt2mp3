@@ -1,0 +1,25 @@
+# バイナリファイル
+yt2mp3
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 依存関係
+vendor/
+
+# MP3ファイル
+*.mp3
+
+# macOS固有のファイル
+.DS_Store
+
+# IDE固有のファイル
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ビルドディレクトリ
+bin/
+dist/ 
