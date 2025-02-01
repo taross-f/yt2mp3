@@ -14,12 +14,12 @@ Simple YouTube to MP3 converter written in Go. This tool downloads YouTube video
 ### From Source
 
 ```bash
-go install github.com/yourusername/yt2mp3@latest
+go install github.com/taross-f/yt2mp3@latest
 ```
 
 ### Binary Releases
 
-Download the latest binary for your platform from the [releases page](https://github.com/yourusername/yt2mp3/releases).
+Download the latest binary for your platform from the [releases page](https://github.com/taross-f/yt2mp3/releases).
 
 ## Usage
 
