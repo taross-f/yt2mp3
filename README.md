@@ -1,5 +1,9 @@
 # yt2mp3
 
+[![Test](https://github.com/taross-f/yt2mp3/actions/workflows/test.yml/badge.svg)](https://github.com/taross-f/yt2mp3/actions/workflows/test.yml)
+[![Release](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml/badge.svg)](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/taross-f/yt2mp3)](https://goreportcard.com/report/github.com/taross-f/yt2mp3)
+
 Simple YouTube to MP3 converter written in Go. This tool downloads YouTube videos and converts them to MP3 format without requiring external dependencies like yt-dlp or ffmpeg.
 
 ## Features
