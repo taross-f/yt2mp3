@@ -1,23 +1,26 @@
 # yt2mp3
 
-A command-line tool to convert YouTube videos to MP3 format.
+A command-line tool to convert YouTube videos to MP3 format. Built as a single binary with no external dependencies.
+
+## Features
+
+- Single binary with no external dependencies
+- Simple command-line interface
+- High-quality audio extraction (320kbps MP3)
+- Automatic metadata preservation
+- Cross-platform support (Windows, macOS, Linux)
 
 ## Requirements
 
-- Go 1.23 or higher
-- yt-dlp (must be installed on your system)
-- ffmpeg (must be installed on your system)
+- Go 1.23 or higher (for building from source)
 
 ## Installation
 
-### 1. Install Required Tools
+### Option 1: Download Binary
 
-For macOS:
-```bash
-brew install yt-dlp ffmpeg
-```
+Download the latest release from the [releases page](https://github.com/yourusername/yt2mp3/releases).
 
-### 2. Install yt2mp3
+### Option 2: Build from Source
 
 ```bash
 go install github.com/yourusername/yt2mp3@latest
@@ -32,12 +35,12 @@ yt2mp3 "https://www.youtube.com/watch?v=VIDEO_ID"
 The converted MP3 file will be saved in the current directory.
 The filename is automatically set based on the video title.
 
-## Features
+## Technical Details
 
-- Simple command-line interface
-- High-quality audio extraction
-- Automatic metadata preservation
-- Fast conversion using yt-dlp and ffmpeg
+- Pure Go implementation
+- Uses youtube/v2 for video downloading
+- Built-in MP3 encoding using reisen
+- High-quality audio output (320kbps)
 
 ## Notes
 
