@@ -79,7 +79,7 @@ func TestRootCmd(t *testing.T) {
 		},
 		{
 			name:        "正しいURL",
-			args:        []string{"https://www.youtube.com/watch?v=wf_IIbT8HGk"}, // YouTube公式のテスト動画
+			args:        []string{"https://www.youtube.com/watch?v=0ywCx6NtlrI"}, // Creative Commons動画
 			shouldError: false,
 		},
 		{
