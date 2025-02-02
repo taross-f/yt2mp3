@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +9,6 @@ import (
 
 	"github.com/bogem/id3v2"
 	"github.com/spf13/cobra"
-	"github.com/wader/goutubedl"
 )
 
 var rootCmd = &cobra.Command{
@@ -21,102 +18,70 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
 
-		ctx := context.Background()
-		result, err := goutubedl.New(ctx, url, goutubedl.Options{})
+		// Create a temporary directory
+		tempDir, err := os.MkdirTemp("", "yt2mp3")
 		if err != nil {
-			return fmt.Errorf("failed to get video info: %v", err)
+			return fmt.Errorf("failed to create temp directory: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		// Download audio using yt-dlp
+		fmt.Println("Downloading audio...")
+		ytdlCmd := exec.Command("yt-dlp",
+			"--extract-audio",
+			"--audio-format", "mp3",
+			"--audio-quality", "0",
+			"--output", filepath.Join(tempDir, "%(title)s.%(ext)s"),
+			url,
+		)
+		if output, err := ytdlCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to download audio: %v\nOutput: %s", err, output)
 		}
 
-		filename := sanitizeFilename(result.Info.Title)
-		tempFile := filename + ".temp"
-		mp3File := filename + ".mp3"
-		fmt.Printf("Downloading: %s\n", result.Info.Title)
-
-		// Download the best audio format
-		downloadResult, err := result.Download(ctx, "bestaudio")
+		// Find the downloaded file
+		files, err := os.ReadDir(tempDir)
 		if err != nil {
-			return fmt.Errorf("failed to download: %v", err)
+			return fmt.Errorf("failed to read temp directory: %v", err)
 		}
-		defer downloadResult.Close()
+		if len(files) == 0 {
+			return fmt.Errorf("no files downloaded")
+		}
 
-		outFile, err := os.Create(tempFile)
+		// Move the file to current directory
+		downloadedFile := filepath.Join(tempDir, files[0].Name())
+		targetFile := files[0].Name()
+
+		// Read file for ID3 tags
+		tag, err := id3v2.Open(downloadedFile, id3v2.Options{Parse: true})
 		if err != nil {
-			return fmt.Errorf("failed to create temporary file: %v", err)
-		}
-		defer func() {
-			outFile.Close()
-			os.Remove(tempFile)
-		}()
-
-		_, err = io.Copy(outFile, downloadResult)
-		if err != nil {
-			return fmt.Errorf("failed to save file: %v", err)
-		}
-		outFile.Close()
-
-		// Convert to MP3 using ffmpeg
-		fmt.Println("Converting to MP3...")
-		ffmpegCmd := exec.Command("ffmpeg", "-i", tempFile, "-codec:a", "libmp3lame", "-q:a", "0", mp3File)
-		if output, err := ffmpegCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to convert to MP3: %v\nOutput: %s", err, output)
+			return fmt.Errorf("failed to open MP3 file for tagging: %v", err)
 		}
 
-		// Add ID3 tags
-		if err := addID3Tags(mp3File, result.Info); err != nil {
-			return fmt.Errorf("failed to add ID3 tags: %v", err)
+		// Set basic tags
+		tag.SetTitle(strings.TrimSuffix(files[0].Name(), filepath.Ext(files[0].Name())))
+		tag.SetAlbum("YouTube")
+
+		// Add YouTube URL as comment
+		tag.AddCommentFrame(id3v2.CommentFrame{
+			Language:    "eng",
+			Description: "YouTube URL",
+			Text:        url,
+		})
+
+		// Save the tags
+		if err = tag.Save(); err != nil {
+			return fmt.Errorf("failed to save ID3 tags: %v", err)
+		}
+		tag.Close()
+
+		// Move file to current directory
+		if err := os.Rename(downloadedFile, targetFile); err != nil {
+			return fmt.Errorf("failed to move file: %v", err)
 		}
 
-		fmt.Printf("Successfully downloaded and converted to: %s\n", mp3File)
+		fmt.Printf("Successfully downloaded and converted to: %s\n", targetFile)
 		return nil
 	},
-}
-
-func sanitizeFilename(filename string) string {
-	// Remove invalid characters
-	filename = strings.Map(func(r rune) rune {
-		if strings.ContainsRune(`<>:"/\|?*`, r) {
-			return '_'
-		}
-		return r
-	}, filename)
-
-	// Trim spaces
-	filename = strings.TrimSpace(filename)
-
-	// Ensure filename is not too long
-	if len(filename) > 200 {
-		ext := filepath.Ext(filename)
-		filename = filename[:200-len(ext)] + ext
-	}
-
-	return filename
-}
-
-func addID3Tags(filename string, info goutubedl.Info) error {
-	tag, err := id3v2.Open(filename, id3v2.Options{Parse: true})
-	if err != nil {
-		return fmt.Errorf("failed to open MP3 file for tagging: %v", err)
-	}
-	defer tag.Close()
-
-	// Set basic tags
-	tag.SetTitle(info.Title)
-	tag.SetArtist(info.Channel)
-	tag.SetAlbum("YouTube")
-
-	// Add YouTube URL as comment
-	tag.AddCommentFrame(id3v2.CommentFrame{
-		Language:    "eng",
-		Description: "YouTube URL",
-		Text:        info.WebpageURL,
-	})
-
-	// Save the tags
-	if err = tag.Save(); err != nil {
-		return fmt.Errorf("failed to save ID3 tags: %v", err)
-	}
-
-	return nil
 }
 
 func main() {
