@@ -4,35 +4,57 @@
 [![Release](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml/badge.svg)](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/taross-f/yt2mp3)](https://goreportcard.com/report/github.com/taross-f/yt2mp3)
 
-Simple YouTube to MP3 converter written in Go. This tool downloads YouTube videos and converts them to MP3 format without requiring external dependencies like yt-dlp or ffmpeg.
-
-## Features
-
-- Download YouTube videos and convert to MP3
-- No external dependencies required
-- Cross-platform support (Windows, macOS, Linux)
-- Simple command-line interface
+A CLI tool to download YouTube videos as MP3 files.
 
 ## Installation
 
-### From Source
+### macOS
 
+1. Download the latest release from [Releases](https://github.com/taross-f/yt2mp3/releases)
+   - Intel Mac: `yt2mp3-darwin-amd64`
+   - Apple Silicon Mac: `yt2mp3-darwin-arm64`
+
+2. Make the binary executable
 ```bash
-go install github.com/taross-f/yt2mp3@latest
+chmod +x yt2mp3-darwin-*
 ```
 
-### Binary Releases
+3. Handle security warning (first run only)
+```bash
+# Remove quarantine attribute to allow execution
+xattr -d com.apple.quarantine yt2mp3-darwin-*
+```
 
-Download the latest binary for your platform from the [releases page](https://github.com/taross-f/yt2mp3/releases).
+### Windows
+
+1. Download `yt2mp3-windows-amd64.exe` from [Releases](https://github.com/taross-f/yt2mp3/releases)
+2. Run the downloaded file
+
+### Linux
+
+1. Download `yt2mp3-linux-amd64` from [Releases](https://github.com/taross-f/yt2mp3/releases)
+2. Make the binary executable
+```bash
+chmod +x yt2mp3-linux-amd64
+```
 
 ## Usage
 
 ```bash
-# Basic usage
-yt2mp3 "https://www.youtube.com/watch?v=VIDEO_ID"
+# Check version
+./yt2mp3 --version
+
+# Download video as MP3
+./yt2mp3 "https://www.youtube.com/watch?v=..."
 ```
 
-The MP3 file will be saved in the current directory with the video title as the filename.
+## Features
+
+- Extract MP3 from YouTube videos
+- Automatic ID3 tag setting (title, album, URL)
+- QuickTime compatible tag format
+- Automatic filename sanitization
+- No external dependencies (yt-dlp included)
 
 ## License
 
