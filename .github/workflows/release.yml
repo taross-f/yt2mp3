@@ -6,7 +6,33 @@ on:
       - "v*"
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Install dependencies
+        run: |
+          go get github.com/bogem/id3v2
+          go mod tidy
+
+      - name: Create bin directory and download yt-dlp
+        run: |
+          mkdir -p bin
+          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp
+          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -o bin/yt-dlp.exe
+          chmod +x bin/yt-dlp
+
+      - name: Run tests
+        run: go test -v ./...
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -17,6 +43,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.21"
+
+      - name: Install dependencies
+        run: |
+          go get github.com/bogem/id3v2
+          go mod tidy
 
       - name: Create bin directory
         run: mkdir -p bin
