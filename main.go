@@ -16,6 +16,13 @@ import (
 //go:embed bin/*
 var binaries embed.FS
 
+var (
+	// Version is set during build
+	Version = "dev"
+	// BuildTime is set during build
+	BuildTime = "unknown"
+)
+
 // extractYtDlp extracts the embedded yt-dlp binary to a temporary file
 func extractYtDlp() (string, error) {
 	// Determine the binary name based on the OS
@@ -75,9 +82,10 @@ func sanitizeFilename(filename string) string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "yt2mp3 [URL]",
-	Short: "Download YouTube video and convert to MP3",
-	Args:  cobra.ExactArgs(1),
+	Use:     "yt2mp3 [URL]",
+	Short:   "Download YouTube video and convert to MP3",
+	Version: Version,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
 

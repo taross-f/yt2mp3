@@ -60,10 +60,14 @@ jobs:
 
       - name: Build for all platforms
         run: |
-          GOOS=darwin GOARCH=amd64 go build -o dist/yt2mp3-darwin-amd64
-          GOOS=darwin GOARCH=arm64 go build -o dist/yt2mp3-darwin-arm64
-          GOOS=windows GOARCH=amd64 go build -o dist/yt2mp3-windows-amd64.exe
-          GOOS=linux GOARCH=amd64 go build -o dist/yt2mp3-linux-amd64
+          VERSION=${GITHUB_REF#refs/tags/}
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          FLAGS="-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}"
+          mkdir -p dist
+          GOOS=darwin GOARCH=amd64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-darwin-amd64
+          GOOS=darwin GOARCH=arm64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-darwin-arm64
+          GOOS=windows GOARCH=amd64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-windows-amd64.exe
+          GOOS=linux GOARCH=amd64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-linux-amd64
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
