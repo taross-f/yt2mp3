@@ -8,44 +8,53 @@ A CLI tool to download YouTube videos as MP3 files.
 
 ## Installation
 
-### macOS
+### macOS (Apple Silicon)
 
-1. Download the latest release from [Releases](https://github.com/taross-f/yt2mp3/releases)
-   - Intel Mac: `yt2mp3-darwin-amd64`
-   - Apple Silicon Mac: `yt2mp3-darwin-arm64`
+1. Download `yt2mp3-darwin-arm64` from [Releases](https://github.com/taross-f/yt2mp3/releases)
 
 2. Make the binary executable
 ```bash
-chmod +x yt2mp3-darwin-*
+chmod +x yt2mp3-darwin-arm64
 ```
 
 3. Handle security warning (first run only)
 ```bash
 # Remove quarantine attribute to allow execution
-xattr -d com.apple.quarantine yt2mp3-darwin-*
+xattr -d com.apple.quarantine yt2mp3-darwin-arm64
 ```
 
 ### Windows
 
 1. Download `yt2mp3-windows-amd64.exe` from [Releases](https://github.com/taross-f/yt2mp3/releases)
-2. Run the downloaded file
 
-### Linux
+2. Handle security warning
+   - When you first run the executable, Windows SmartScreen might show a warning
+   - Click "More info" and then "Run anyway" to proceed
+   - This warning appears because the executable is not signed with a certificate
 
-1. Download `yt2mp3-linux-amd64` from [Releases](https://github.com/taross-f/yt2mp3/releases)
-2. Make the binary executable
-```bash
-chmod +x yt2mp3-linux-amd64
-```
+3. (Optional) Add to PATH
+   - Move the executable to a permanent location (e.g., `C:\Program Files\yt2mp3\`)
+   - Add that location to your PATH environment variable
+   - This allows you to run the tool from any directory
 
 ## Usage
 
+### macOS
 ```bash
 # Check version
-./yt2mp3 --version
+./yt2mp3-darwin-arm64 --version
 
 # Download video as MP3
-./yt2mp3 "https://www.youtube.com/watch?v=..."
+./yt2mp3-darwin-arm64 "https://www.youtube.com/watch?v=..."
+```
+
+### Windows
+```cmd
+# Check version
+yt2mp3-windows-amd64.exe --version
+
+# Download video as MP3
+yt2mp3-windows-amd64.exe "https://www.youtube.com/watch?v=..."
 ```
 
 ## Features
