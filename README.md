@@ -3,6 +3,7 @@
 [![Test](https://github.com/taross-f/yt2mp3/actions/workflows/test.yml/badge.svg)](https://github.com/taross-f/yt2mp3/actions/workflows/test.yml)
 [![Release](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml/badge.svg)](https://github.com/taross-f/yt2mp3/actions/workflows/release.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/taross-f/yt2mp3)](https://goreportcard.com/report/github.com/taross-f/yt2mp3)
+[![codecov](https://codecov.io/gh/taross-f/yt2mp3/branch/main/graph/badge.svg)](https://codecov.io/gh/taross-f/yt2mp3)
 
 A CLI tool to download YouTube videos as MP3 files.
 
