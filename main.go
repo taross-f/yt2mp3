@@ -3,11 +3,14 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"io/fs"
 
 	"github.com/bogem/id3v2"
 	"github.com/spf13/cobra"
@@ -24,7 +27,7 @@ var (
 )
 
 // extractYtDlp extracts the embedded yt-dlp binary to a temporary file
-func extractYtDlp() (string, error) {
+func extractYtDlp(fs fs.FS, dir string) error {
 	// Determine the binary name based on the OS
 	binaryName := "yt-dlp"
 	if runtime.GOOS == "windows" {
@@ -32,31 +35,24 @@ func extractYtDlp() (string, error) {
 	}
 
 	// Read the embedded binary
-	data, err := binaries.ReadFile(filepath.Join("bin", binaryName))
+	file, err := fs.Open(filepath.Join("bin", binaryName))
 	if err != nil {
-		return "", fmt.Errorf("failed to read embedded yt-dlp: %v", err)
+		return fmt.Errorf("failed to read embedded yt-dlp: %w", err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("failed to read embedded yt-dlp: %w", err)
 	}
 
 	// Create a temporary file
-	tmpFile, err := os.CreateTemp("", "yt-dlp-*"+filepath.Ext(binaryName))
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %v", err)
-	}
-	defer tmpFile.Close()
-
-	// Make the file executable
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
-			return "", fmt.Errorf("failed to make yt-dlp executable: %v", err)
-		}
+	tempFile := filepath.Join(dir, binaryName)
+	if err := os.WriteFile(tempFile, data, 0755); err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 
-	// Write the binary data
-	if _, err := tmpFile.Write(data); err != nil {
-		return "", fmt.Errorf("failed to write yt-dlp: %v", err)
-	}
-
-	return tmpFile.Name(), nil
+	return nil
 }
 
 // sanitizeFilename removes or replaces invalid characters from the filename
@@ -97,15 +93,13 @@ var rootCmd = &cobra.Command{
 		defer os.RemoveAll(tempDir)
 
 		// Extract yt-dlp binary
-		ytdlpPath, err := extractYtDlp()
-		if err != nil {
+		if err := extractYtDlp(binaries, tempDir); err != nil {
 			return err
 		}
-		defer os.Remove(ytdlpPath)
 
 		// Download audio using yt-dlp
 		fmt.Println("Downloading audio...")
-		ytdlCmd := exec.Command(ytdlpPath,
+		ytdlCmd := exec.Command(filepath.Join(tempDir, "yt-dlp"),
 			"--extract-audio",
 			"--audio-format", "mp3",
 			"--audio-quality", "0",
