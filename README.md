@@ -47,6 +47,9 @@ xattr -d com.apple.quarantine yt2mp3-darwin-arm64
 
 # Download video as MP3
 ./yt2mp3-darwin-arm64 "https://www.youtube.com/watch?v=..."
+
+# Download video as MP3 to specific directory
+./yt2mp3-darwin-arm64 -o /path/to/output "https://www.youtube.com/watch?v=..."
 ```
 
 ### Windows
@@ -56,7 +59,16 @@ yt2mp3-windows-amd64.exe --version
 
 # Download video as MP3
 yt2mp3-windows-amd64.exe "https://www.youtube.com/watch?v=..."
+
+# Download video as MP3 to specific directory
+yt2mp3-windows-amd64.exe --output-dir C:\Music "https://www.youtube.com/watch?v=..."
 ```
+
+### Options
+
+- `-o, --output-dir`: 出力ディレクトリを指定（デフォルト: カレントディレクトリ）
+- `-h, --help`: ヘルプメッセージを表示
+- `--version`: バージョン情報を表示
 
 ## Features
 

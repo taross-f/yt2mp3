@@ -144,9 +144,17 @@ func TestRootCmd(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(tmpDir)
 
+	// 既存のディレクトリを作成
+	existingDir := filepath.Join(tmpDir, "existing-dir")
+	if err := os.MkdirAll(existingDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name        string
 		args        []string
+		flags       []string
+		setup       func() error
 		mockRunE    func(cmd *cobra.Command, args []string) error
 		shouldError bool
 	}{
@@ -161,6 +169,31 @@ func TestRootCmd(t *testing.T) {
 			shouldError: false,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
 				return nil
+			},
+		},
+		{
+			name:        "出力ディレクトリ指定",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "test-output"},
+			shouldError: false,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				dir, err := cmd.Flags().GetString("output-dir")
+				if err != nil {
+					return err
+				}
+				if dir != "test-output" {
+					return fmt.Errorf("expected output-dir to be 'test-output', got '%s'", dir)
+				}
+				return nil
+			},
+		},
+		{
+			name:        "出力ディレクトリ作成エラー",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "/root/test"}, // 権限エラーを発生させる
+			shouldError: true,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				return fmt.Errorf("failed to create output directory")
 			},
 		},
 		{
@@ -184,10 +217,89 @@ func TestRootCmd(t *testing.T) {
 				return fmt.Errorf("failed to create temp directory")
 			},
 		},
+		{
+			name:        "既存の出力ディレクトリ",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "existing-dir"},
+			shouldError: false,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				dir, err := cmd.Flags().GetString("output-dir")
+				if err != nil {
+					return err
+				}
+				if dir != "existing-dir" {
+					return fmt.Errorf("expected output-dir to be 'existing-dir', got '%s'", dir)
+				}
+				return nil
+			},
+		},
+		{
+			name:        "相対パスでの出力ディレクトリ指定",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "./relative/path"},
+			shouldError: false,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				dir, err := cmd.Flags().GetString("output-dir")
+				if err != nil {
+					return err
+				}
+				if dir != "./relative/path" {
+					return fmt.Errorf("expected output-dir to be './relative/path', got '%s'", dir)
+				}
+				return nil
+			},
+		},
+		{
+			name:        "空白を含む出力ディレクトリ",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "my music"},
+			shouldError: false,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				dir, err := cmd.Flags().GetString("output-dir")
+				if err != nil {
+					return err
+				}
+				if dir != "my music" {
+					return fmt.Errorf("expected output-dir to be 'my music', got '%s'", dir)
+				}
+				return nil
+			},
+		},
+		{
+			name:        "日本語パスでの出力ディレクトリ",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "音楽/ダウンロード"},
+			shouldError: false,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				dir, err := cmd.Flags().GetString("output-dir")
+				if err != nil {
+					return err
+				}
+				if dir != "音楽/ダウンロード" {
+					return fmt.Errorf("expected output-dir to be '音楽/ダウンロード', got '%s'", dir)
+				}
+				return nil
+			},
+		},
+		{
+			name:        "親ディレクトリへの相対パス",
+			args:        []string{"https://www.youtube.com/watch?v=test"},
+			flags:       []string{"--output-dir", "../outside"},
+			shouldError: true,
+			mockRunE: func(cmd *cobra.Command, args []string) error {
+				return fmt.Errorf("failed to create output directory: path is outside of current directory")
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				if err := tt.setup(); err != nil {
+					t.Fatal(err)
+				}
+			}
+
 			if tt.mockRunE != nil {
 				rootCmd.RunE = tt.mockRunE
 			} else {
@@ -199,7 +311,8 @@ func TestRootCmd(t *testing.T) {
 				RunE: rootCmd.RunE,
 				Args: rootCmd.Args,
 			}
-			cmd.SetArgs(tt.args)
+			cmd.Flags().StringP("output-dir", "o", "", "出力ディレクトリを指定")
+			cmd.SetArgs(append(tt.args, tt.flags...))
 			err := cmd.Execute()
 			if (err != nil) != tt.shouldError {
 				t.Errorf("Execute() error = %v, shouldError %v", err, tt.shouldError)

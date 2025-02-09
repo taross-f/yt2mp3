@@ -24,6 +24,8 @@ var (
 	Version = "dev"
 	// BuildTime is set during build
 	BuildTime = "unknown"
+	// 出力ディレクトリのオプション
+	outputDir string
 )
 
 // extractYtDlp extracts the embedded yt-dlp binary to a temporary file
@@ -97,6 +99,26 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		// 出力ディレクトリが指定されている場合はチェックして作成
+		if outputDir != "" {
+			// 親ディレクトリへのアクセスをチェック
+			absOutputDir, err := filepath.Abs(outputDir)
+			if err != nil {
+				return fmt.Errorf("failed to resolve output directory path: %v", err)
+			}
+			currentDir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current directory: %v", err)
+			}
+			if !strings.HasPrefix(absOutputDir, currentDir) {
+				return fmt.Errorf("failed to create output directory: path is outside of current directory")
+			}
+
+			if err := os.MkdirAll(outputDir, 0755); err != nil {
+				return fmt.Errorf("failed to create output directory: %v", err)
+			}
+		}
+
 		// Download audio using yt-dlp
 		fmt.Println("Downloading audio...")
 		ytdlCmd := exec.Command(filepath.Join(tempDir, "yt-dlp"),
@@ -122,6 +144,9 @@ var rootCmd = &cobra.Command{
 		// Use the downloaded file
 		downloadedFile := filepath.Join(tempDir, files[0].Name())
 		targetFile := sanitizeFilename(files[0].Name())
+		if outputDir != "" {
+			targetFile = filepath.Join(outputDir, targetFile)
+		}
 
 		// Open file for ID3 tag editing
 		tag, err := id3v2.Open(downloadedFile, id3v2.Options{Parse: true})
@@ -157,6 +182,10 @@ var rootCmd = &cobra.Command{
 		fmt.Printf("Successfully downloaded and converted to: %s\n", targetFile)
 		return nil
 	},
+}
+
+func init() {
+	rootCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "", "出力ディレクトリを指定")
 }
 
 func main() {
