@@ -5,6 +5,8 @@
 *.so
 *.dylib
 yt2mp3
+bin/yt-dlp
+bin/yt-dlp.exe
 
 # Test binary, built with `go test -c`
 *.test
