@@ -327,16 +327,38 @@ func TestExtractYtDlp(t *testing.T) {
 	tests := []struct {
 		name       string
 		binaries   fs.FS
+		goos       string
 		wantErr    bool
 		errMessage string
 	}{
 		{
-			name: "success",
+			name: "success on darwin",
 			binaries: mockFS{
 				files: map[string][]byte{
 					"bin/yt-dlp": []byte("dummy binary"),
 				},
 			},
+			goos:    "darwin",
+			wantErr: false,
+		},
+		{
+			name: "success on linux",
+			binaries: mockFS{
+				files: map[string][]byte{
+					"bin/yt-dlp": []byte("dummy binary"),
+				},
+			},
+			goos:    "linux",
+			wantErr: false,
+		},
+		{
+			name: "success on windows",
+			binaries: mockFS{
+				files: map[string][]byte{
+					"bin/yt-dlp.exe": []byte("dummy binary"),
+				},
+			},
+			goos:    "windows",
 			wantErr: false,
 		},
 		{
@@ -344,6 +366,7 @@ func TestExtractYtDlp(t *testing.T) {
 			binaries: mockFS{
 				files: map[string][]byte{},
 			},
+			goos:       "linux",
 			wantErr:    true,
 			errMessage: "failed to read embedded yt-dlp",
 		},
@@ -351,6 +374,11 @@ func TestExtractYtDlp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore original GOOS
+			originalGOOS := os.Getenv("GOOS")
+			os.Setenv("GOOS", tt.goos)
+			defer os.Setenv("GOOS", originalGOOS)
+
 			err := extractYtDlp(tt.binaries, tempDir)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -360,7 +388,11 @@ func TestExtractYtDlp(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				// 抽出されたファイルの存在を確認
-				_, err := os.Stat(filepath.Join(tempDir, "yt-dlp"))
+				expectedName := "yt-dlp"
+				if tt.goos == "windows" {
+					expectedName += ".exe"
+				}
+				_, err := os.Stat(filepath.Join(tempDir, expectedName))
 				assert.NoError(t, err)
 			}
 		})

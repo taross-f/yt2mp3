@@ -24,6 +24,22 @@ chmod +x yt2mp3-darwin-arm64
 xattr -d com.apple.quarantine yt2mp3-darwin-arm64
 ```
 
+### Linux (x86_64/ARM64)
+
+1. Download the appropriate binary from [Releases](https://github.com/taross-f/yt2mp3/releases)
+   - For x86_64: `yt2mp3-linux-amd64`
+   - For ARM64: `yt2mp3-linux-arm64`
+
+2. Make the binary executable
+```bash
+chmod +x yt2mp3-linux-*
+```
+
+3. (Optional) Move to a directory in your PATH
+```bash
+sudo mv yt2mp3-linux-* /usr/local/bin/yt2mp3
+```
+
 ### Windows
 
 1. Download `yt2mp3-windows-amd64.exe` from [Releases](https://github.com/taross-f/yt2mp3/releases)

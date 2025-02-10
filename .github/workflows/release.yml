@@ -58,7 +58,7 @@ jobs:
           curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -o bin/yt-dlp.exe
           chmod +x bin/yt-dlp
 
-      - name: Build for Windows and Mac ARM
+      - name: Build for Windows, Mac ARM and Linux
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
@@ -66,6 +66,8 @@ jobs:
           mkdir -p dist
           GOOS=darwin GOARCH=arm64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-darwin-arm64
           GOOS=windows GOARCH=amd64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-windows-amd64.exe
+          GOOS=linux GOARCH=amd64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-linux-amd64
+          GOOS=linux GOARCH=arm64 go build -ldflags "${FLAGS}" -o dist/yt2mp3-linux-arm64
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -73,3 +75,5 @@ jobs:
           files: |
             dist/yt2mp3-darwin-arm64
             dist/yt2mp3-windows-amd64.exe
+            dist/yt2mp3-linux-amd64
+            dist/yt2mp3-linux-arm64

@@ -30,9 +30,14 @@ var (
 
 // extractYtDlp extracts the embedded yt-dlp binary to a temporary file
 func extractYtDlp(fs fs.FS, dir string) error {
-	// Determine the binary name based on the OS
+	// バイナリ名を設定
 	binaryName := "yt-dlp"
-	if runtime.GOOS == "windows" {
+	if goos := os.Getenv("GOOS"); goos == "" {
+		// 環境変数GOOSが設定されていない場合はruntime.GOOSを使用
+		if runtime.GOOS == "windows" {
+			binaryName = "yt-dlp.exe"
+		}
+	} else if goos == "windows" {
 		binaryName = "yt-dlp.exe"
 	}
 
