@@ -82,9 +82,9 @@ yt2mp3-windows-amd64.exe --output-dir C:\Music "https://www.youtube.com/watch?v=
 
 ### Options
 
-- `-o, --output-dir`: 出力ディレクトリを指定（デフォルト: カレントディレクトリ）
-- `-h, --help`: ヘルプメッセージを表示
-- `--version`: バージョン情報を表示
+- `-o, --output-dir`: Specify output directory (default: current directory)
+- `-h, --help`: Show help message
+- `--version`: Show version information
 
 ## Features
 

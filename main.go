@@ -24,16 +24,16 @@ var (
 	Version = "dev"
 	// BuildTime is set during build
 	BuildTime = "unknown"
-	// 出力ディレクトリのオプション
+	// Output directory option
 	outputDir string
 )
 
 // extractYtDlp extracts the embedded yt-dlp binary to a temporary file
 func extractYtDlp(fs fs.FS, dir string) error {
-	// バイナリ名を設定
+	// Set binary name
 	binaryName := "yt-dlp"
 	if goos := os.Getenv("GOOS"); goos == "" {
-		// 環境変数GOOSが設定されていない場合はruntime.GOOSを使用
+		// If GOOS environment variable is not set, use runtime.GOOS
 		if runtime.GOOS == "windows" {
 			binaryName = "yt-dlp.exe"
 		}
@@ -104,9 +104,9 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		// 出力ディレクトリが指定されている場合はチェックして作成
+		// If output directory is specified, check and create it
 		if outputDir != "" {
-			// 親ディレクトリへのアクセスをチェック
+			// Check access to parent directory
 			absOutputDir, err := filepath.Abs(outputDir)
 			if err != nil {
 				return fmt.Errorf("failed to resolve output directory path: %v", err)
@@ -174,7 +174,7 @@ var rootCmd = &cobra.Command{
 		}
 		tag.Close()
 
-		// QuickTime互換のため、ID3タグバージョンをv2.3に固定する
+		// Fix ID3 tag version to v2.3 for QuickTime compatibility
 		if err = fixID3Version(downloadedFile); err != nil {
 			return fmt.Errorf("failed to fix ID3 version: %v", err)
 		}
@@ -190,7 +190,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "", "出力ディレクトリを指定")
+	rootCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "", "Output directory to specify")
 }
 
 func main() {
