@@ -95,27 +95,27 @@ func TestSanitizeFilename(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "通常のファイル名",
+			name:     "Normal filename",
 			input:    "test.mp3",
 			expected: "test.mp3",
 		},
 		{
-			name:     "無効な文字を含むファイル名",
+			name:     "Filename with invalid characters",
 			input:    "test:file*?.mp3",
 			expected: "test_file__.mp3",
 		},
 		{
-			name:     "長すぎるファイル名",
+			name:     "Too long filename",
 			input:    strings.Repeat("a", 300) + ".mp3",
 			expected: strings.Repeat("a", 196) + ".mp3",
 		},
 		{
-			name:     "日本語ファイル名",
+			name:     "Japanese filename",
 			input:    "テスト.mp3",
 			expected: "テスト.mp3",
 		},
 		{
-			name:     "空白文字のトリミング",
+			name:     "Trim whitespace",
 			input:    " test.mp3 ",
 			expected: "test.mp3",
 		},
@@ -138,13 +138,13 @@ func TestRootCmd(t *testing.T) {
 		rootCmd.RunE = originalRunE
 	}()
 
-	// テスト用の一時ディレクトリを作成
+	// Create temporary directory for testing
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
 	os.Chdir(tmpDir)
 
-	// 既存のディレクトリを作成
+	// Create existing directory
 	existingDir := filepath.Join(tmpDir, "existing-dir")
 	if err := os.MkdirAll(existingDir, 0755); err != nil {
 		t.Fatal(err)
@@ -159,12 +159,12 @@ func TestRootCmd(t *testing.T) {
 		shouldError bool
 	}{
 		{
-			name:        "引数なし",
+			name:        "No arguments",
 			args:        []string{},
 			shouldError: true,
 		},
 		{
-			name:        "正しいURL",
+			name:        "Valid URL",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			shouldError: false,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
@@ -172,7 +172,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "出力ディレクトリ指定",
+			name:        "Output directory specified",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "test-output"},
 			shouldError: false,
@@ -188,7 +188,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "出力ディレクトリ作成エラー",
+			name:        "Output directory creation error",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "/root/test"}, // 権限エラーを発生させる
 			shouldError: true,
