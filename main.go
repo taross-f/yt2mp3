@@ -84,6 +84,71 @@ func sanitizeFilename(filename string) string {
 	return result
 }
 
+// prepareOutputDir validates that outputDir resolves to a location within the
+// current working directory and creates it (including parents) if needed.
+func prepareOutputDir(outputDir string) error {
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve output directory path: %v", err)
+	}
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %v", err)
+	}
+	if !isWithinDir(currentDir, absOutputDir) {
+		return fmt.Errorf("failed to create output directory: path is outside of current directory")
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %v", err)
+	}
+	return nil
+}
+
+// findDownloadedMP3 returns the name of the first .mp3 file in dir. The temp
+// directory also contains the extracted yt-dlp binary, so we must select the
+// .mp3 file explicitly rather than relying on directory ordering.
+func findDownloadedMP3(dir string) (string, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read temp directory: %v", err)
+	}
+	for _, f := range files {
+		if !f.IsDir() && strings.EqualFold(filepath.Ext(f.Name()), ".mp3") {
+			return f.Name(), nil
+		}
+	}
+	return "", fmt.Errorf("no MP3 file downloaded")
+}
+
+// writeID3Tags writes the basic ID3 tags (title, album, source URL) to the MP3
+// file and normalizes the tag version to v2.3 for QuickTime compatibility.
+func writeID3Tags(path, title, url string) error {
+	tag, err := id3v2.Open(path, id3v2.Options{Parse: true})
+	if err != nil {
+		return fmt.Errorf("failed to open MP3 file for tagging: %v", err)
+	}
+
+	tag.SetTitle(title)
+	tag.SetAlbum("YouTube")
+	tag.AddCommentFrame(id3v2.CommentFrame{
+		Language:    "eng",
+		Description: "YouTube URL",
+		Text:        url,
+	})
+
+	if err = tag.Save(); err != nil {
+		tag.Close()
+		return fmt.Errorf("failed to save ID3 tags: %v", err)
+	}
+	tag.Close()
+
+	// Fix ID3 tag version to v2.3 for QuickTime compatibility
+	if err = fixID3Version(path); err != nil {
+		return fmt.Errorf("failed to fix ID3 version: %v", err)
+	}
+	return nil
+}
+
 // isWithinDir reports whether target is the base directory itself or nested
 // inside it. Both paths are expected to be absolute. It guards against path
 // traversal (e.g. "../outside") as well as sibling directories that merely
@@ -118,21 +183,8 @@ var rootCmd = &cobra.Command{
 
 		// If output directory is specified, check and create it
 		if outputDir != "" {
-			// Check access to parent directory
-			absOutputDir, err := filepath.Abs(outputDir)
-			if err != nil {
-				return fmt.Errorf("failed to resolve output directory path: %v", err)
-			}
-			currentDir, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get current directory: %v", err)
-			}
-			if !isWithinDir(currentDir, absOutputDir) {
-				return fmt.Errorf("failed to create output directory: path is outside of current directory")
-			}
-
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				return fmt.Errorf("failed to create output directory: %v", err)
+			if err := prepareOutputDir(outputDir); err != nil {
+				return err
 			}
 		}
 
@@ -149,22 +201,10 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to download audio: %v\nOutput: %s", err, output)
 		}
 
-		// Find the downloaded MP3 file. The temp directory also contains the
-		// extracted yt-dlp binary, so we must select the .mp3 file explicitly
-		// rather than relying on directory ordering.
-		files, err := os.ReadDir(tempDir)
+		// Find the downloaded MP3 file.
+		downloadedName, err := findDownloadedMP3(tempDir)
 		if err != nil {
-			return fmt.Errorf("failed to read temp directory: %v", err)
-		}
-		var downloadedName string
-		for _, f := range files {
-			if !f.IsDir() && strings.EqualFold(filepath.Ext(f.Name()), ".mp3") {
-				downloadedName = f.Name()
-				break
-			}
-		}
-		if downloadedName == "" {
-			return fmt.Errorf("no MP3 file downloaded")
+			return err
 		}
 
 		// Use the downloaded file
@@ -175,30 +215,10 @@ var rootCmd = &cobra.Command{
 			targetFile = filepath.Join(outputDir, targetName)
 		}
 
-		// Open file for ID3 tag editing
-		tag, err := id3v2.Open(downloadedFile, id3v2.Options{Parse: true})
-		if err != nil {
-			return fmt.Errorf("failed to open MP3 file for tagging: %v", err)
-		}
-
-		// Set basic tags (use the file name without its directory or extension)
-		tag.SetTitle(strings.TrimSuffix(targetName, filepath.Ext(targetName)))
-		tag.SetAlbum("YouTube")
-		tag.AddCommentFrame(id3v2.CommentFrame{
-			Language:    "eng",
-			Description: "YouTube URL",
-			Text:        url,
-		})
-
-		// Save the tags
-		if err = tag.Save(); err != nil {
-			return fmt.Errorf("failed to save ID3 tags: %v", err)
-		}
-		tag.Close()
-
-		// Fix ID3 tag version to v2.3 for QuickTime compatibility
-		if err = fixID3Version(downloadedFile); err != nil {
-			return fmt.Errorf("failed to fix ID3 version: %v", err)
+		// Write ID3 tags (title without directory or extension)
+		title := strings.TrimSuffix(targetName, filepath.Ext(targetName))
+		if err := writeID3Tags(downloadedFile, title, url); err != nil {
+			return err
 		}
 
 		// Move file to current directory

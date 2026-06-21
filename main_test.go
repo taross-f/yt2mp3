@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bogem/id3v2"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
@@ -152,6 +153,161 @@ func TestIsWithinDir(t *testing.T) {
 				t.Errorf("isWithinDir(%q, %q) = %v, want %v", base, tt.target, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPrepareOutputDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("creates nested directory within cwd", func(t *testing.T) {
+		if err := prepareOutputDir("music/downloads"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		info, err := os.Stat(filepath.Join(tmpDir, "music", "downloads"))
+		if err != nil {
+			t.Fatalf("directory was not created: %v", err)
+		}
+		if !info.IsDir() {
+			t.Error("expected a directory to be created")
+		}
+	})
+
+	t.Run("rejects path outside cwd", func(t *testing.T) {
+		err := prepareOutputDir("../outside")
+		if err == nil {
+			t.Fatal("expected an error for a path outside the current directory")
+		}
+		if !strings.Contains(err.Error(), "outside of current directory") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("accepts the current directory itself", func(t *testing.T) {
+		if err := prepareOutputDir("."); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("mkdir failure when a parent path component is a file", func(t *testing.T) {
+		mustWrite(t, filepath.Join(tmpDir, "blocker"), "not a dir")
+		err := prepareOutputDir("blocker/sub")
+		if err == nil {
+			t.Fatal("expected an error when a parent component is a file")
+		}
+		if !strings.Contains(err.Error(), "failed to create output directory") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestExtractYtDlpWriteError(t *testing.T) {
+	binaries := mockFS{files: map[string][]byte{"bin/yt-dlp": []byte("dummy binary")}}
+	os.Setenv("GOOS", "linux")
+	defer os.Unsetenv("GOOS")
+
+	// Target a directory that does not exist so os.WriteFile fails.
+	err := extractYtDlp(binaries, filepath.Join(t.TempDir(), "missing-subdir"))
+	if err == nil {
+		t.Fatal("expected an error when the destination directory does not exist")
+	}
+	if !strings.Contains(err.Error(), "failed to create temp file") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestFindDownloadedMP3(t *testing.T) {
+	t.Run("selects mp3 alongside the yt-dlp binary", func(t *testing.T) {
+		dir := t.TempDir()
+		// The binary sorts before the mp3 alphabetically, so a naive files[0]
+		// would pick it; findDownloadedMP3 must skip it.
+		mustWrite(t, filepath.Join(dir, "yt-dlp"), "binary")
+		mustWrite(t, filepath.Join(dir, "song.mp3"), "audio")
+
+		name, err := findDownloadedMP3(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "song.mp3" {
+			t.Errorf("got %q, want %q", name, "song.mp3")
+		}
+	})
+
+	t.Run("uppercase extension is matched", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "SONG.MP3"), "audio")
+		name, err := findDownloadedMP3(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "SONG.MP3" {
+			t.Errorf("got %q, want %q", name, "SONG.MP3")
+		}
+	})
+
+	t.Run("no mp3 present", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "yt-dlp"), "binary")
+		if _, err := findDownloadedMP3(dir); err == nil {
+			t.Fatal("expected an error when no mp3 is present")
+		}
+	})
+
+	t.Run("unreadable directory", func(t *testing.T) {
+		if _, err := findDownloadedMP3(filepath.Join(t.TempDir(), "does-not-exist")); err == nil {
+			t.Fatal("expected an error for a nonexistent directory")
+		}
+	})
+}
+
+func TestWriteID3Tags(t *testing.T) {
+	t.Run("writes tags and normalizes version to v2.3", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "song.mp3")
+		mustWrite(t, path, "")
+
+		if err := writeID3Tags(path, "My Title", "https://youtu.be/abc"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) < 4 || string(data[0:3]) != "ID3" {
+			t.Fatal("expected an ID3 tag to be written")
+		}
+		if data[3] != 3 {
+			t.Errorf("expected ID3 version 2.3 (got 2.%d)", data[3])
+		}
+
+		// Re-open and confirm the title round-trips.
+		tag, err := id3v2.Open(path, id3v2.Options{Parse: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tag.Close()
+		if tag.Title() != "My Title" {
+			t.Errorf("title = %q, want %q", tag.Title(), "My Title")
+		}
+	})
+
+	t.Run("error opening a nonexistent file", func(t *testing.T) {
+		err := writeID3Tags(filepath.Join(t.TempDir(), "missing.mp3"), "t", "u")
+		if err == nil {
+			t.Fatal("expected an error for a nonexistent file")
+		}
+	})
+}
+
+// mustWrite writes content to path, failing the test on error.
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
 	}
 }
 
