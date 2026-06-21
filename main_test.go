@@ -131,6 +131,30 @@ func TestSanitizeFilename(t *testing.T) {
 	}
 }
 
+func TestIsWithinDir(t *testing.T) {
+	base := filepath.FromSlash("/home/user/app")
+	tests := []struct {
+		name   string
+		target string
+		want   bool
+	}{
+		{"same directory", filepath.FromSlash("/home/user/app"), true},
+		{"nested directory", filepath.FromSlash("/home/user/app/music"), true},
+		{"deeply nested", filepath.FromSlash("/home/user/app/a/b/c"), true},
+		{"parent directory", filepath.FromSlash("/home/user"), false},
+		{"sibling sharing prefix", filepath.FromSlash("/home/user/app-evil"), false},
+		{"unrelated directory", filepath.FromSlash("/etc"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isWithinDir(base, tt.target); got != tt.want {
+				t.Errorf("isWithinDir(%q, %q) = %v, want %v", base, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRootCmd(t *testing.T) {
 	// Save original RunE and restore it after test
 	originalRunE := rootCmd.RunE
@@ -190,19 +214,19 @@ func TestRootCmd(t *testing.T) {
 		{
 			name:        "Output directory creation error",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
-			flags:       []string{"--output-dir", "/root/test"}, // 権限エラーを発生させる
+			flags:       []string{"--output-dir", "/root/test"}, // trigger a permission error
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to create output directory")
 			},
 		},
 		{
-			name:        "複数の引数",
+			name:        "Multiple arguments",
 			args:        []string{"url1", "url2"},
 			shouldError: true,
 		},
 		{
-			name:        "無効なURL",
+			name:        "Invalid URL",
 			args:        []string{"invalid-url"},
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
@@ -210,7 +234,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "一時ディレクトリ作成エラー",
+			name:        "Temp directory creation error",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
@@ -218,7 +242,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "既存の出力ディレクトリ",
+			name:        "Existing output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "existing-dir"},
 			shouldError: false,
@@ -234,7 +258,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "相対パスでの出力ディレクトリ指定",
+			name:        "Relative path output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "./relative/path"},
 			shouldError: false,
@@ -250,7 +274,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "空白を含む出力ディレクトリ",
+			name:        "Output directory with spaces",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "my music"},
 			shouldError: false,
@@ -266,7 +290,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "日本語パスでの出力ディレクトリ",
+			name:        "Japanese path output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "音楽/ダウンロード"},
 			shouldError: false,
@@ -282,7 +306,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "親ディレクトリへの相対パス",
+			name:        "Relative path to parent directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "../outside"},
 			shouldError: true,
@@ -311,7 +335,7 @@ func TestRootCmd(t *testing.T) {
 				RunE: rootCmd.RunE,
 				Args: rootCmd.Args,
 			}
-			cmd.Flags().StringP("output-dir", "o", "", "出力ディレクトリを指定")
+			cmd.Flags().StringP("output-dir", "o", "", "Output directory to specify")
 			cmd.SetArgs(append(tt.args, tt.flags...))
 			err := cmd.Execute()
 			if (err != nil) != tt.shouldError {
@@ -387,7 +411,7 @@ func TestExtractYtDlp(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
-				// 抽出されたファイルの存在を確認
+				// Verify the extracted file exists
 				expectedName := "yt-dlp"
 				if tt.goos == "windows" {
 					expectedName += ".exe"
@@ -406,7 +430,7 @@ func TestFixID3Version(t *testing.T) {
 		shouldError bool
 	}{
 		{
-			name: "ID3v2.4からv2.3への変換",
+			name: "Convert ID3v2.4 to v2.3",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "test.mp3")
 				header := []byte("ID3\x04\x00\x00\x00\x00\x00\x00") // ID3v2.4 header
@@ -418,7 +442,7 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name: "ID3タグなしのファイル",
+			name: "File without ID3 tag",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "test.mp3")
 				if err := os.WriteFile(tmpFile, []byte("not an ID3 file"), 0644); err != nil {
@@ -429,15 +453,18 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name: "存在しないファイル",
+			name: "Nonexistent file",
 			setup: func(t *testing.T) string {
 				return filepath.Join(t.TempDir(), "nonexistent.mp3")
 			},
 			shouldError: true,
 		},
 		{
-			name: "読み取り専用ファイル",
+			name: "Read-only file",
 			setup: func(t *testing.T) string {
+				if os.Geteuid() == 0 {
+					t.Skip("running as root bypasses file permission checks")
+				}
 				tmpFile := filepath.Join(t.TempDir(), "readonly.mp3")
 				header := []byte("ID3\x04\x00\x00\x00\x00\x00\x00")
 				if err := os.WriteFile(tmpFile, header, 0444); err != nil {
@@ -448,10 +475,10 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name: "破損したID3ヘッダー",
+			name: "Corrupt ID3 header",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "corrupt.mp3")
-				header := []byte("ID3") // 不完全なヘッダー
+				header := []byte("ID3") // incomplete header
 				if err := os.WriteFile(tmpFile, header, 0644); err != nil {
 					t.Fatal(err)
 				}
@@ -470,7 +497,7 @@ func TestFixID3Version(t *testing.T) {
 			}
 
 			if !tt.shouldError && err == nil {
-				// 成功ケースの場合、ファイルの内容を確認
+				// On success, verify the file contents
 				data, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)

@@ -84,6 +84,18 @@ func sanitizeFilename(filename string) string {
 	return result
 }
 
+// isWithinDir reports whether target is the base directory itself or nested
+// inside it. Both paths are expected to be absolute. It guards against path
+// traversal (e.g. "../outside") as well as sibling directories that merely
+// share a string prefix (e.g. "/home/user/app" vs "/home/user/app-evil").
+func isWithinDir(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "yt2mp3 [URL]",
 	Short:   "Download YouTube video and convert to MP3",
@@ -115,7 +127,7 @@ var rootCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("failed to get current directory: %v", err)
 			}
-			if !strings.HasPrefix(absOutputDir, currentDir) {
+			if !isWithinDir(currentDir, absOutputDir) {
 				return fmt.Errorf("failed to create output directory: path is outside of current directory")
 			}
 
@@ -137,20 +149,30 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to download audio: %v\nOutput: %s", err, output)
 		}
 
-		// Find the downloaded file
+		// Find the downloaded MP3 file. The temp directory also contains the
+		// extracted yt-dlp binary, so we must select the .mp3 file explicitly
+		// rather than relying on directory ordering.
 		files, err := os.ReadDir(tempDir)
 		if err != nil {
 			return fmt.Errorf("failed to read temp directory: %v", err)
 		}
-		if len(files) == 0 {
-			return fmt.Errorf("no files downloaded")
+		var downloadedName string
+		for _, f := range files {
+			if !f.IsDir() && strings.EqualFold(filepath.Ext(f.Name()), ".mp3") {
+				downloadedName = f.Name()
+				break
+			}
+		}
+		if downloadedName == "" {
+			return fmt.Errorf("no MP3 file downloaded")
 		}
 
 		// Use the downloaded file
-		downloadedFile := filepath.Join(tempDir, files[0].Name())
-		targetFile := sanitizeFilename(files[0].Name())
+		downloadedFile := filepath.Join(tempDir, downloadedName)
+		targetName := sanitizeFilename(downloadedName)
+		targetFile := targetName
 		if outputDir != "" {
-			targetFile = filepath.Join(outputDir, targetFile)
+			targetFile = filepath.Join(outputDir, targetName)
 		}
 
 		// Open file for ID3 tag editing
@@ -159,8 +181,8 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to open MP3 file for tagging: %v", err)
 		}
 
-		// Set basic tags
-		tag.SetTitle(strings.TrimSuffix(targetFile, filepath.Ext(targetFile)))
+		// Set basic tags (use the file name without its directory or extension)
+		tag.SetTitle(strings.TrimSuffix(targetName, filepath.Ext(targetName)))
 		tag.SetAlbum("YouTube")
 		tag.AddCommentFrame(id3v2.CommentFrame{
 			Language:    "eng",
@@ -209,9 +231,8 @@ func fixID3Version(filename string) error {
 	defer f.Close()
 
 	header := make([]byte, 10)
-	n, err := f.Read(header)
-	if err != nil || n != 10 {
-		return fmt.Errorf("failed to read header")
+	if _, err := io.ReadFull(f, header); err != nil {
+		return fmt.Errorf("failed to read header: %w", err)
 	}
 
 	if string(header[0:3]) != "ID3" {
