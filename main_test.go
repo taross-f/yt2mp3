@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bogem/id3v2"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
@@ -131,6 +132,185 @@ func TestSanitizeFilename(t *testing.T) {
 	}
 }
 
+func TestIsWithinDir(t *testing.T) {
+	base := filepath.FromSlash("/home/user/app")
+	tests := []struct {
+		name   string
+		target string
+		want   bool
+	}{
+		{"same directory", filepath.FromSlash("/home/user/app"), true},
+		{"nested directory", filepath.FromSlash("/home/user/app/music"), true},
+		{"deeply nested", filepath.FromSlash("/home/user/app/a/b/c"), true},
+		{"parent directory", filepath.FromSlash("/home/user"), false},
+		{"sibling sharing prefix", filepath.FromSlash("/home/user/app-evil"), false},
+		{"unrelated directory", filepath.FromSlash("/etc"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isWithinDir(base, tt.target); got != tt.want {
+				t.Errorf("isWithinDir(%q, %q) = %v, want %v", base, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrepareOutputDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("creates nested directory within cwd", func(t *testing.T) {
+		if err := prepareOutputDir("music/downloads"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		info, err := os.Stat(filepath.Join(tmpDir, "music", "downloads"))
+		if err != nil {
+			t.Fatalf("directory was not created: %v", err)
+		}
+		if !info.IsDir() {
+			t.Error("expected a directory to be created")
+		}
+	})
+
+	t.Run("rejects path outside cwd", func(t *testing.T) {
+		err := prepareOutputDir("../outside")
+		if err == nil {
+			t.Fatal("expected an error for a path outside the current directory")
+		}
+		if !strings.Contains(err.Error(), "outside of current directory") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("accepts the current directory itself", func(t *testing.T) {
+		if err := prepareOutputDir("."); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("mkdir failure when a parent path component is a file", func(t *testing.T) {
+		mustWrite(t, filepath.Join(tmpDir, "blocker"), "not a dir")
+		err := prepareOutputDir("blocker/sub")
+		if err == nil {
+			t.Fatal("expected an error when a parent component is a file")
+		}
+		if !strings.Contains(err.Error(), "failed to create output directory") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestExtractYtDlpWriteError(t *testing.T) {
+	binaries := mockFS{files: map[string][]byte{"bin/yt-dlp": []byte("dummy binary")}}
+	os.Setenv("GOOS", "linux")
+	defer os.Unsetenv("GOOS")
+
+	// Target a directory that does not exist so os.WriteFile fails.
+	err := extractYtDlp(binaries, filepath.Join(t.TempDir(), "missing-subdir"))
+	if err == nil {
+		t.Fatal("expected an error when the destination directory does not exist")
+	}
+	if !strings.Contains(err.Error(), "failed to create temp file") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestFindDownloadedMP3(t *testing.T) {
+	t.Run("selects mp3 alongside the yt-dlp binary", func(t *testing.T) {
+		dir := t.TempDir()
+		// The binary sorts before the mp3 alphabetically, so a naive files[0]
+		// would pick it; findDownloadedMP3 must skip it.
+		mustWrite(t, filepath.Join(dir, "yt-dlp"), "binary")
+		mustWrite(t, filepath.Join(dir, "song.mp3"), "audio")
+
+		name, err := findDownloadedMP3(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "song.mp3" {
+			t.Errorf("got %q, want %q", name, "song.mp3")
+		}
+	})
+
+	t.Run("uppercase extension is matched", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "SONG.MP3"), "audio")
+		name, err := findDownloadedMP3(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "SONG.MP3" {
+			t.Errorf("got %q, want %q", name, "SONG.MP3")
+		}
+	})
+
+	t.Run("no mp3 present", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "yt-dlp"), "binary")
+		if _, err := findDownloadedMP3(dir); err == nil {
+			t.Fatal("expected an error when no mp3 is present")
+		}
+	})
+
+	t.Run("unreadable directory", func(t *testing.T) {
+		if _, err := findDownloadedMP3(filepath.Join(t.TempDir(), "does-not-exist")); err == nil {
+			t.Fatal("expected an error for a nonexistent directory")
+		}
+	})
+}
+
+func TestWriteID3Tags(t *testing.T) {
+	t.Run("writes tags and normalizes version to v2.3", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "song.mp3")
+		mustWrite(t, path, "")
+
+		if err := writeID3Tags(path, "My Title", "https://youtu.be/abc"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) < 4 || string(data[0:3]) != "ID3" {
+			t.Fatal("expected an ID3 tag to be written")
+		}
+		if data[3] != 3 {
+			t.Errorf("expected ID3 version 2.3 (got 2.%d)", data[3])
+		}
+
+		// Re-open and confirm the title round-trips.
+		tag, err := id3v2.Open(path, id3v2.Options{Parse: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tag.Close()
+		if tag.Title() != "My Title" {
+			t.Errorf("title = %q, want %q", tag.Title(), "My Title")
+		}
+	})
+
+	t.Run("error opening a nonexistent file", func(t *testing.T) {
+		err := writeID3Tags(filepath.Join(t.TempDir(), "missing.mp3"), "t", "u")
+		if err == nil {
+			t.Fatal("expected an error for a nonexistent file")
+		}
+	})
+}
+
+// mustWrite writes content to path, failing the test on error.
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRootCmd(t *testing.T) {
 	// Save original RunE and restore it after test
 	originalRunE := rootCmd.RunE
@@ -190,19 +370,19 @@ func TestRootCmd(t *testing.T) {
 		{
 			name:        "Output directory creation error",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
-			flags:       []string{"--output-dir", "/root/test"}, // 権限エラーを発生させる
+			flags:       []string{"--output-dir", "/root/test"}, // trigger a permission error
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to create output directory")
 			},
 		},
 		{
-			name:        "複数の引数",
+			name:        "Multiple arguments",
 			args:        []string{"url1", "url2"},
 			shouldError: true,
 		},
 		{
-			name:        "無効なURL",
+			name:        "Invalid URL",
 			args:        []string{"invalid-url"},
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
@@ -210,7 +390,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "一時ディレクトリ作成エラー",
+			name:        "Temp directory creation error",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			shouldError: true,
 			mockRunE: func(cmd *cobra.Command, args []string) error {
@@ -218,7 +398,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "既存の出力ディレクトリ",
+			name:        "Existing output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "existing-dir"},
 			shouldError: false,
@@ -234,7 +414,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "相対パスでの出力ディレクトリ指定",
+			name:        "Relative path output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "./relative/path"},
 			shouldError: false,
@@ -250,7 +430,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "空白を含む出力ディレクトリ",
+			name:        "Output directory with spaces",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "my music"},
 			shouldError: false,
@@ -266,7 +446,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "日本語パスでの出力ディレクトリ",
+			name:        "Japanese path output directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "音楽/ダウンロード"},
 			shouldError: false,
@@ -282,7 +462,7 @@ func TestRootCmd(t *testing.T) {
 			},
 		},
 		{
-			name:        "親ディレクトリへの相対パス",
+			name:        "Relative path to parent directory",
 			args:        []string{"https://www.youtube.com/watch?v=test"},
 			flags:       []string{"--output-dir", "../outside"},
 			shouldError: true,
@@ -311,7 +491,7 @@ func TestRootCmd(t *testing.T) {
 				RunE: rootCmd.RunE,
 				Args: rootCmd.Args,
 			}
-			cmd.Flags().StringP("output-dir", "o", "", "出力ディレクトリを指定")
+			cmd.Flags().StringP("output-dir", "o", "", "Output directory to specify")
 			cmd.SetArgs(append(tt.args, tt.flags...))
 			err := cmd.Execute()
 			if (err != nil) != tt.shouldError {
@@ -387,7 +567,7 @@ func TestExtractYtDlp(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
-				// 抽出されたファイルの存在を確認
+				// Verify the extracted file exists
 				expectedName := "yt-dlp"
 				if tt.goos == "windows" {
 					expectedName += ".exe"
@@ -406,7 +586,7 @@ func TestFixID3Version(t *testing.T) {
 		shouldError bool
 	}{
 		{
-			name: "ID3v2.4からv2.3への変換",
+			name: "Convert ID3v2.4 to v2.3",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "test.mp3")
 				header := []byte("ID3\x04\x00\x00\x00\x00\x00\x00") // ID3v2.4 header
@@ -418,7 +598,7 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name: "ID3タグなしのファイル",
+			name: "File without ID3 tag",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "test.mp3")
 				if err := os.WriteFile(tmpFile, []byte("not an ID3 file"), 0644); err != nil {
@@ -429,15 +609,18 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name: "存在しないファイル",
+			name: "Nonexistent file",
 			setup: func(t *testing.T) string {
 				return filepath.Join(t.TempDir(), "nonexistent.mp3")
 			},
 			shouldError: true,
 		},
 		{
-			name: "読み取り専用ファイル",
+			name: "Read-only file",
 			setup: func(t *testing.T) string {
+				if os.Geteuid() == 0 {
+					t.Skip("running as root bypasses file permission checks")
+				}
 				tmpFile := filepath.Join(t.TempDir(), "readonly.mp3")
 				header := []byte("ID3\x04\x00\x00\x00\x00\x00\x00")
 				if err := os.WriteFile(tmpFile, header, 0444); err != nil {
@@ -448,10 +631,10 @@ func TestFixID3Version(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name: "破損したID3ヘッダー",
+			name: "Corrupt ID3 header",
 			setup: func(t *testing.T) string {
 				tmpFile := filepath.Join(t.TempDir(), "corrupt.mp3")
-				header := []byte("ID3") // 不完全なヘッダー
+				header := []byte("ID3") // incomplete header
 				if err := os.WriteFile(tmpFile, header, 0644); err != nil {
 					t.Fatal(err)
 				}
@@ -470,7 +653,7 @@ func TestFixID3Version(t *testing.T) {
 			}
 
 			if !tt.shouldError && err == nil {
-				// 成功ケースの場合、ファイルの内容を確認
+				// On success, verify the file contents
 				data, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
